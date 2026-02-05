@@ -3,23 +3,21 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 
-# 1. .env 파일의 환경 변수를 불러옵니다.
+# 1. 먼저 .env 파일이 있으면 불러오기 (내 컴퓨터용)
 load_dotenv()
 
-# 2. 불러온 환경 변수에서 API 키를 가져옵니다.
-api_key = os.getenv("GOOGLE_API_KEY")
+# 2. API 키 가져오기 (순서: Streamlit Secrets -> 환경변수 순서로 확인)
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+else:
+    api_key = os.getenv("GOOGLE_API_KEY")
 
-st.set_page_config(page_title="Gemini AI 채팅", page_icon="✨")
-st.title("✨ 보안이 강화된 Gemini 챗봇")
-
-# 3. API 설정
+# 3. 설정 확인
 if api_key:
     genai.configure(api_key=api_key)
 else:
-    st.error(".env 파일에 GOOGLE_API_KEY가 설정되어 있지 않습니다.")
+    st.error("API 키를 찾을 수 없습니다. 배포 설정의 Secrets를 확인해 주세요.")
     st.stop()
-
-# --- 이후 대화 로직은 이전과 동일합니다 ---
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
