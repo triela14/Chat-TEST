@@ -56,10 +56,10 @@ for message in st.session_state.messages:
 # 채팅 입력
 if prompt := st.chat_input("메시지를 입력하세요"):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar="img/User.png"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar="img/Yael.png"):
         response_placeholder = st.empty()
         full_response = ""
         
