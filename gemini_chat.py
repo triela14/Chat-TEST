@@ -37,7 +37,7 @@ with col1:
     st.image("img/Yael.png", width=80)
 
 with col2:
-    st.subheader(f"{personality_type}와(과)의 대화")
+    st.subheader(f"야엘 슈브의 대화방")
 #    st.caption("온라인 | 마음을 불태우는 중 🔥")
 
 st.divider() # 구분선
