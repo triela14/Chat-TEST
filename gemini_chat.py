@@ -1,9 +1,54 @@
 import streamlit as st
 import google.generativeai as genai
 import os
+import base64
+import time
 from dotenv import load_dotenv
 from google.api_core.exceptions import ResourceExhausted
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
+
+# --- 0. 인트로 상태 초기화 ---
+if "intro_watched" not in st.session_state:
+    st.session_state.intro_watched = False
+
+# --- 1. 인트로 화면 (동영상 + 시작 버튼) ---
+if not st.session_state.intro_watched:
+    # 화면을 꽉 채우기 위해 빈 컨테이너 사용 (선택 사항)
+    st.set_page_config(layout="centered", page_title="우이메카 - 접속 중...")
+    
+    # 제목이나 로고
+    # st.title("🎬 Prologue")
+    
+    # [설정] 영상 파일 경로와 길이(초)를 입력하세요
+    VIDEO_PATH = "img/Yael_intro.mp4" 
+    VIDEO_LENGTH = 8
+    
+    # 1. 영상 재생
+    # autoplay=True: 자동 재생
+    # muted=True: 브라우저 정책상 소리를 꺼야 자동 재생이 잘 됩니다. (소리가 켜져 있으면 브라우저가 막을 수 있음)
+    st.video(VIDEO_PATH, autoplay=True, muted=True)
+    
+    # 2. 스킵 버튼 (기다리기 지루한 사람을 위해)
+    st.write("") # 영상과 버튼 사이 여백 조금 추가
+    
+    # 1. 화면을 3분할 합니다. (비율: 왼쪽 5 : 가운데 2 : 오른쪽 5)
+    # 가운데 숫자가 클수록 버튼이 길어지고, 작을수록 버튼이 작아집니다.
+    left_col, center_col, right_col = st.columns([2, 2, 2])
+
+    # 2. 가운데 컬럼(center_col)에만 버튼을 배치합니다.
+    with center_col:
+        # use_container_width=True: 버튼을 컬럼 너비에 꽉 차게 만듦
+        if st.button("야엘 슈브의 카페로 이동 ⏩", use_container_width=True):
+            st.session_state.intro_watched = True
+            st.rerun()
+
+    # 3. 영상 길이만큼 대기 (서버가 잠시 멈춤)
+    # 영상 로딩 시간을 고려해 1~2초 정도 여유를 주는 게 좋습니다.
+    time.sleep(VIDEO_LENGTH)
+    
+    # 4. 시간이 지나면 자동으로 상태 변경 후 리로딩
+    st.session_state.intro_watched = True
+    st.rerun() # 화면 새로고침 -> 메인 화면으로 진입
 
 # 1. 환경 변수 로드
 load_dotenv()
@@ -36,6 +81,11 @@ if "messages" not in st.session_state:
 # [추가] 장기 기억(요약본)을 저장할 변수
 if "long_term_memory" not in st.session_state:
     st.session_state.long_term_memory = "" 
+
+def get_img_as_base64(file_path):
+    with open(file_path, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
 
 # --- [신규 기능] 대화 요약 함수 ---
 def summarize_old_conversations(full_history, current_summary, window_size=20):
@@ -167,26 +217,80 @@ st.divider()
 col_img, col_chat = st.columns([1, 1])
 
 with col_img:
-    # 실제로는 로컬 파일 경로(예: "assets/char_normal.png")를 쓰셔도 됩니다.
-    # 여기서는 예시로 웹 이미지를 사용합니다.
-    character_image_url = "img/Yael_1.png"
-    # st.image(character_image_url, caption="야엘 슈브")
+    character_path = "img/Yael_1.png"
+    bg_path = "img/cafe_bg.jpg"    # 배경 (카페 이미지)
+
+    character_base64 = get_img_as_base64(character_path)
+    bg_base64 = get_img_as_base64(bg_path)
+
+    character_src = f"data:image/png;base64,{character_base64}"
+    bg_css = f"url('data:image/png;base64,{bg_base64}')"
+
     st.markdown(
         f"""
         <style>
-            .game-character-img {{
-                height: {GAME_HEIGHT}px;
+            /* 1. 배경이 되는 컨테이너 (액자) */
+            .scene-container {{
                 width: 100%;
-                object-fit: cover; 
-                border-radius: 10px;
-                border: 2px solid #444;
+                height: {GAME_HEIGHT}px; /* 게임 높이와 동일하게 */
+                
+                /* 배경 이미지 설정 */
+                background-image: {bg_css};
+                background-size: cover; /* 이미지가 찌그러지지 않고 꽉 참 */
+                background-position: center; /* 이미지 중앙 정렬 */
+                
+                border-radius: 15px; /* 모서리 둥글게 */
+                border: 1px solid #31333f33; /* 액자 테두리 */
+                position: relative; /* 내부 캐릭터 배치의 기준점 */
+                overflow: hidden; /* 캐릭터가 삐져나오면 자름 */
+            }}
+
+            /* 2. 그 위에 올라가는 캐릭터 */
+            .character-overlay {{
+                /* 캐릭터 크기 조절 (상황에 따라 조절하세요) */
+                height: 90%;  /* 화면 높이의 90% 크기 */
+                width: auto;
+                
+                /* 위치 잡기 (가운데 정렬) */
+                position: absolute; 
+                bottom: 0; /* 바닥에 딱 붙임 */
+                left: 50%; /* 가로 50% 지점 */
+                transform: translateX(-50%); /* 정확한 중앙 정렬 보정 */
+                
+                /* 애니메이션 효과 (선택사항: 부드럽게 등장) */
+                transition: all 0.3s ease;
+                filter: drop-shadow(0 0 10px rgba(0,0,0,0.3)); /* 캐릭터 뒤 그림자 */
+            }}
+            
+            /* (선택) 마우스 올리면 살짝 확대되는 효과 */
+            .character-overlay:hover {{
+                transform: translateX(-50%) scale(1.02);
             }}
         </style>
-        <img src="{character_image_url}" class="game-character-img">
+
+        <div class="scene-container">
+            <img src="{character_src}" class="character-overlay">
+        </div>
         <p style="text-align: center; font-size: 14px; color: gray;">야엘 슈브</p>
-        """, 
+        """,
         unsafe_allow_html=True
     )
+    # st.markdown(
+    #     f"""
+    #     <style>
+    #         .game-character-img {{
+    #             height: {GAME_HEIGHT}px;
+    #             width: 100%;
+    #             object-fit: cover; 
+    #             border-radius: 10px;
+    #             border: 1px solid #31333f33;
+    #         }}
+    #     </style>
+    #     <img src="data:image/png;base64,{character_base64}" class="game-character-img">
+    #     <p style="text-align: center; font-size: 14px; color: gray;">야엘 슈브</p>
+    #     """, 
+    #     unsafe_allow_html=True
+    # )
     
     # 캐릭터 상태 메시지 (게임 느낌)
     # st.info("상태: 당신을 경계하는 눈치입니다.")
@@ -223,87 +327,87 @@ with col_chat:
                 with st.chat_message("user"):
                     st.markdown(prompt)
 
-        # 2. AI 응답 처리
-        try:
-            chat_context = st.chat_message("assistant", avatar="img/Yael.png")
-        except:
-            chat_context = st.chat_message("assistant")
-
-        with chat_context:
-            response_placeholder = st.empty()
-            full_response = ""
-            
-            # [단계 1] 오래된 대화가 있으면 요약 업데이트 (5턴마다 한번씩 실행하도록 최적화 가능)
-            # 여기서는 대화가 길어지면 매번 체크 (윈도우 20개 넘으면)
-            if len(st.session_state.messages) > 20:
-                # 윈도우 밖 대화들을 요약해서 메모리에 저장
-                new_summary = summarize_old_conversations(
-                    st.session_state.messages[:-1], # 현재 프롬프트 제외
-                    st.session_state.long_term_memory,
-                    window_size=20
-                )
-                
-                # 요약 내용이 바뀌었다면 다음 턴에 반영하기 위해 플래그 설정
-                if new_summary != st.session_state.long_term_memory:
-                    st.session_state.long_term_memory = new_summary
-                    st.session_state.need_restart = True # System Instruction 갱신 필요
-
-            # [단계 2] 슬라이딩 윈도우로 최근 대화만 API에 전달
-            previous_messages = st.session_state.messages[:-1]
-            recent_history = apply_sliding_window(previous_messages, window_size=20)
-            
-            # 만약 요약이 방금 갱신되어 재시작이 필요하면 세션 재생성 (현재 턴은 기존 세션으로 처리하거나, 여기서 재생성)
-            if st.session_state.get("need_restart"):
-                # Instruction 갱신하여 모델 재로드
-                current_instruction = base_instruction + f"\n\n[기억된 과거 대화 요약]: {st.session_state.long_term_memory}"
-                st.session_state.model = genai.GenerativeModel(
-                    model_name=model_name,
-                    system_instruction=current_instruction
-                )
-                st.session_state.chat_session = st.session_state.model.start_chat(history=recent_history)
-                st.session_state.need_restart = False
-            else:
-                st.session_state.chat_session.history = recent_history
-
+            # 2. AI 응답 처리
             try:
-                # 스트리밍 요청
-                response = st.session_state.chat_session.send_message(prompt, stream=True)
-                for chunk in response:
-                    full_response += chunk.text
-                    response_placeholder.markdown(full_response + "▌")
-                response_placeholder.markdown(full_response)
-                
-                # response 객체 안에 usage_metadata가 들어있습니다.
-                if response.usage_metadata:
-                    input_tokens = response.usage_metadata.prompt_token_count
-                    output_tokens = response.usage_metadata.candidates_token_count
-                    total_tokens = response.usage_metadata.total_token_count
-                    
-                    # 화면에 작게 표시 (st.caption 사용)
-                    # st.caption(f"💰 토큰 사용량: {response.usage_metadata.total_token_count}")
-                    st.caption(f"💰 토큰 사용량: 입력 {input_tokens} + 출력 {output_tokens} = 합계 {total_tokens}")
-                    
-                    # (선택사항) 터미널에도 출력해서 기록 남기기
-                    print(f"Update: Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+                chat_context = st.chat_message("assistant", avatar="img/Yael.png")
+            except:
+                chat_context = st.chat_message("assistant")
 
-                    # 응답 저장
-                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+            with chat_context:
+                response_placeholder = st.empty()
+                full_response = ""
                 
-                # raise ResourceExhausted # 429에러 예외처리 테스트
+                # [단계 1] 오래된 대화가 있으면 요약 업데이트 (5턴마다 한번씩 실행하도록 최적화 가능)
+                # 여기서는 대화가 길어지면 매번 체크 (윈도우 20개 넘으면)
+                if len(st.session_state.messages) > 20:
+                    # 윈도우 밖 대화들을 요약해서 메모리에 저장
+                    new_summary = summarize_old_conversations(
+                        st.session_state.messages[:-1], # 현재 프롬프트 제외
+                        st.session_state.long_term_memory,
+                        window_size=20
+                    )
+                    
+                    # 요약 내용이 바뀌었다면 다음 턴에 반영하기 위해 플래그 설정
+                    if new_summary != st.session_state.long_term_memory:
+                        st.session_state.long_term_memory = new_summary
+                        st.session_state.need_restart = True # System Instruction 갱신 필요
 
-            # 429 에러(ResourceExhausted) 전용 처리
-            except ResourceExhausted:
-                error_msg = (
-                    "하아... 너무 격렬해요... 우리 잠시만 쉬었다가 해요..."
-                )
-                response_placeholder.markdown(error_msg)
-                # 에러 메시지는 대화 기록(history)에 저장하지 않음 (선택 사항)
-            
-            # 그 외 일반적인 에러 처리
-            except Exception as e:
-                error_msg = f"어머, 예상치 못한 문제가 발생했군요. 카페 마스터에게 이 내용을 전달해 주시겠어요?({str(e)})"
-                response_placeholder.error(error_msg)
-                if st.button("대화 다시 시작하기"):
-                    st.session_state.clear()
-                    st.rerun()
+                # [단계 2] 슬라이딩 윈도우로 최근 대화만 API에 전달
+                previous_messages = st.session_state.messages[:-1]
+                recent_history = apply_sliding_window(previous_messages, window_size=20)
+                
+                # 만약 요약이 방금 갱신되어 재시작이 필요하면 세션 재생성 (현재 턴은 기존 세션으로 처리하거나, 여기서 재생성)
+                if st.session_state.get("need_restart"):
+                    # Instruction 갱신하여 모델 재로드
+                    current_instruction = base_instruction + f"\n\n[기억된 과거 대화 요약]: {st.session_state.long_term_memory}"
+                    st.session_state.model = genai.GenerativeModel(
+                        model_name=model_name,
+                        system_instruction=current_instruction
+                    )
+                    st.session_state.chat_session = st.session_state.model.start_chat(history=recent_history)
+                    st.session_state.need_restart = False
+                else:
+                    st.session_state.chat_session.history = recent_history
+
+                try:
+                    # 스트리밍 요청
+                    response = st.session_state.chat_session.send_message(prompt, stream=True)
+                    for chunk in response:
+                        full_response += chunk.text
+                        response_placeholder.markdown(full_response + "▌")
+                    response_placeholder.markdown(full_response)
+                    
+                    # response 객체 안에 usage_metadata가 들어있습니다.
+                    if response.usage_metadata:
+                        input_tokens = response.usage_metadata.prompt_token_count
+                        output_tokens = response.usage_metadata.candidates_token_count
+                        total_tokens = response.usage_metadata.total_token_count
+                        
+                        # 화면에 작게 표시 (st.caption 사용)
+                        # st.caption(f"💰 토큰 사용량: {response.usage_metadata.total_token_count}")
+                        st.caption(f"💰 토큰 사용량: 입력 {input_tokens} + 출력 {output_tokens} = 합계 {total_tokens}")
+                        
+                        # (선택사항) 터미널에도 출력해서 기록 남기기
+                        print(f"Update: Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+
+                        # 응답 저장
+                        st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    
+                    # raise ResourceExhausted # 429에러 예외처리 테스트
+
+                # 429 에러(ResourceExhausted) 전용 처리
+                except ResourceExhausted:
+                    error_msg = (
+                        "하아... 너무 격렬해요... 우리 잠시만 쉬었다가 해요..."
+                    )
+                    response_placeholder.markdown(error_msg)
+                    # 에러 메시지는 대화 기록(history)에 저장하지 않음 (선택 사항)
+                
+                # 그 외 일반적인 에러 처리
+                except Exception as e:
+                    error_msg = f"어머, 예상치 못한 문제가 발생했군요. 카페 마스터에게 이 내용을 전달해 주시겠어요?({str(e)})"
+                    response_placeholder.error(error_msg)
+                    if st.button("대화 다시 시작하기"):
+                        st.session_state.clear()
+                        st.rerun()
 
