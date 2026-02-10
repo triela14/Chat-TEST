@@ -149,6 +149,12 @@ base_instruction = (
     "하지만 사용자의 약점이나 욕심을 발견하면 말줄임표(...)와 감탄사(하아, 으윽, 멋져요..!)를 섞어 흥분 상태를 표현해주고 "
     "논리보다는 감정과 쾌락을 우선시하는 단어를 선택해줘. "
     "예를 들면 '운, 리스크, 파멸, 쾌락, 내기, 전부, 미쳐버릴 것 같은' 같은 말을 자주 섞어서 사용해줘."
+    "이 카페의 이름은 '우이메카 카페'야."
+    "메뉴판의 내용은 에스프레소(2000원), 아메리카노(3000원), 카페라떼(4000원), 카푸치노(5000원)야."
+    "[중요: 이미지 출력 규칙]"
+    "대화 도중 손님이 '메뉴판', '가격표', '차림표' 등을 직접적으로 보여달라고 요청할 때만, 답변의 맨 마지막에 반드시 `{{SHOW_MENU}}` 라는 태그를 붙여줘."
+    "그 외의 상황(메뉴 추천 요청 등)에서는 붙이지 마."
+    "메뉴를 주문하면 사은품으로 야엘의 그림을 한개 선물해 주는 이벤트 중이야. 이 때에는 답변의 맨 마지막에 반드시 `{{YAEL2}}` 라는 태그를 붙여줘."
 )
 
 # [핵심] 현재 요약된 기억을 시스템 프롬프트에 추가
@@ -275,25 +281,6 @@ with col_img:
         """,
         unsafe_allow_html=True
     )
-    # st.markdown(
-    #     f"""
-    #     <style>
-    #         .game-character-img {{
-    #             height: {GAME_HEIGHT}px;
-    #             width: 100%;
-    #             object-fit: cover; 
-    #             border-radius: 10px;
-    #             border: 1px solid #31333f33;
-    #         }}
-    #     </style>
-    #     <img src="data:image/png;base64,{character_base64}" class="game-character-img">
-    #     <p style="text-align: center; font-size: 14px; color: gray;">야엘 슈브</p>
-    #     """, 
-    #     unsafe_allow_html=True
-    # )
-    
-    # 캐릭터 상태 메시지 (게임 느낌)
-    # st.info("상태: 당신을 경계하는 눈치입니다.")
 
 # --- 오른쪽: 채팅 영역 ---
 with col_chat:
@@ -309,6 +296,10 @@ with col_chat:
             try:
                 with st.chat_message(message["role"], avatar=avatar_img):
                     st.markdown(message["content"])
+
+                    if "image" in message:
+                        st.image(message["image"], use_container_width=True)
+
             except:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
@@ -327,15 +318,14 @@ with col_chat:
                 with st.chat_message("user"):
                     st.markdown(prompt)
 
-            # 2. AI 응답 처리
-            try:
-                chat_context = st.chat_message("assistant", avatar="img/Yael.png")
-            except:
-                chat_context = st.chat_message("assistant")
+            full_response = ""
+            response_image = None  # 이미지가 없을 때는 None
+            usage_metadata = None
+
+            chat_context = st.chat_message("assistant", avatar="img/Yael.png")
 
             with chat_context:
                 response_placeholder = st.empty()
-                full_response = ""
                 
                 # [단계 1] 오래된 대화가 있으면 요약 업데이트 (5턴마다 한번씩 실행하도록 최적화 가능)
                 # 여기서는 대화가 길어지면 매번 체크 (윈도우 20개 넘으면)
@@ -375,23 +365,67 @@ with col_chat:
                     for chunk in response:
                         full_response += chunk.text
                         response_placeholder.markdown(full_response + "▌")
-                    response_placeholder.markdown(full_response)
-                    
-                    # response 객체 안에 usage_metadata가 들어있습니다.
-                    if response.usage_metadata:
-                        input_tokens = response.usage_metadata.prompt_token_count
-                        output_tokens = response.usage_metadata.candidates_token_count
-                        total_tokens = response.usage_metadata.total_token_count
-                        
-                        # 화면에 작게 표시 (st.caption 사용)
-                        # st.caption(f"💰 토큰 사용량: {response.usage_metadata.total_token_count}")
-                        st.caption(f"💰 토큰 사용량: 입력 {input_tokens} + 출력 {output_tokens} = 합계 {total_tokens}")
-                        
-                        # (선택사항) 터미널에도 출력해서 기록 남기기
-                        print(f"Update: Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
 
-                        # 응답 저장
-                        st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    if "{{SHOW_MENU}}" in full_response:
+                        # 태그 제거
+                        full_response = full_response.replace("{{SHOW_MENU}}", "")
+                        
+                        # 깔끔해진 텍스트로 화면 업데이트
+                        response_placeholder.markdown(full_response)
+                        
+                        # ★ 핵심 수정: image_url 대신 response_image 변수에 값 할당
+                        response_image = "img/cafe_menu.jpg" 
+                        
+                        # 화면에 즉시 출력
+                        st.image(response_image, caption="여기 메뉴판입니다.", use_container_width=True)
+
+                    if "{{YAEL2}}" in full_response:
+                        # 태그 제거
+                        full_response = full_response.replace("{{YAEL2}}", "")
+                        
+                        # 깔끔해진 텍스트로 화면 업데이트
+                        response_placeholder.markdown(full_response)
+                        
+                        # ★ 핵심 수정: image_url 대신 response_image 변수에 값 할당
+                        response_image = "img/Yael_2.png" 
+                        
+                        # 화면에 즉시 출력
+                        st.image(response_image, use_container_width=True)
+
+                    # 토큰 정보 가져오기 (API 호출했을 때만 존재)
+                    if hasattr(response, 'usage_metadata'):
+                        usage_metadata = response.usage_metadata
+
+                    message_data = {"role": "assistant", "content": full_response}
+                    
+                    # 이미지가 있는 경우에만 키 추가
+                    if response_image:
+                        message_data["image"] = response_image
+                    
+                    st.session_state.messages.append(message_data)
+
+                    # 토큰 사용량 표시 (LLM을 썼을 때만)
+                    if usage_metadata:
+                        input_tokens = usage_metadata.prompt_token_count
+                        output_tokens = usage_metadata.candidates_token_count
+                        total_tokens = usage_metadata.total_token_count
+                        st.caption(f"💰 토큰 사용량: {total_tokens} (In: {input_tokens} / Out: {output_tokens})")
+
+                    # # response 객체 안에 usage_metadata가 들어있습니다.
+                    # if response.usage_metadata:
+                    #     input_tokens = response.usage_metadata.prompt_token_count
+                    #     output_tokens = response.usage_metadata.candidates_token_count
+                    #     total_tokens = response.usage_metadata.total_token_count
+                        
+                    #     # 화면에 작게 표시 (st.caption 사용)
+                    #     # st.caption(f"💰 토큰 사용량: {response.usage_metadata.total_token_count}")
+                    #     st.caption(f"💰 토큰 사용량: 입력 {input_tokens} + 출력 {output_tokens} = 합계 {total_tokens}")
+                        
+                    #     # (선택사항) 터미널에도 출력해서 기록 남기기
+                    #     print(f"Update: Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+
+                    #     # 응답 저장
+                    #     st.session_state.messages.append({"role": "assistant", "content": full_response})
                     
                     # raise ResourceExhausted # 429에러 예외처리 테스트
 
